@@ -1665,8 +1665,8 @@ static const luaL_Reg lusb_handle_methods[] = {
     {"interrupt_transfer", lusb_interrupt_transfer},
     {"get_descriptor", lusb_get_descriptor},
     {"get_string_descriptor", lusb_get_string_descriptor},
-    {"get_string_ascii", lusb_get_string_descriptor_ascii},
-    {"get_string_utf8", lusb_get_string_descriptor_utf8},
+    {"get_string_descriptor_ascii", lusb_get_string_descriptor_ascii},
+    {"get_string_descriptor_utf8", lusb_get_string_descriptor_utf8},
     {NULL, NULL}
 };
 
@@ -1701,8 +1701,8 @@ static const luaL_Reg lusb_functions[] = {
     {"get_config_descriptor_by_value", lusb_get_config_descriptor_by_value},
     {"get_descriptor", lusb_get_descriptor},
     {"get_string_descriptor", lusb_get_string_descriptor},
-    {"get_string_ascii", lusb_get_string_descriptor_ascii},
-    {"get_string_utf8", lusb_get_string_descriptor_utf8},
+    {"get_string_descriptor_ascii", lusb_get_string_descriptor_ascii},
+    {"get_string_descriptor_utf8", lusb_get_string_descriptor_utf8},
     {"close", closehandle},
     {"open", lusb_open},
     {"open_device_with_vid_pid", lusb_open_device_with_vid_pid},
