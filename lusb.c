@@ -373,7 +373,7 @@ static int freetransfer(lua_State *L)
     return 0;
 }
 
-static int pushdevicedesc(lua_State *L, struct libusb_device_descriptor *desc)
+static int pushdevicedesc(lua_State *L, const struct libusb_device_descriptor *desc)
 {
     lua_createtable(L, 0, 14);
     lua_pushliteral(L, "bLength");
@@ -421,7 +421,7 @@ static int pushdevicedesc(lua_State *L, struct libusb_device_descriptor *desc)
     return 1;
 }
 
-static int pushendpointdesc(lua_State *L, struct libusb_endpoint_descriptor *desc)
+static int pushendpointdesc(lua_State *L, const struct libusb_endpoint_descriptor *desc)
 {
     lua_createtable(L, 0, 8);
     lua_pushliteral(L, "bLength");
@@ -454,9 +454,9 @@ static int pushendpointdesc(lua_State *L, struct libusb_endpoint_descriptor *des
     return 1;
 }
 
-static int pushinterfacedesc(lua_State *L, struct libusb_interface_descriptor *desc)
+static int pushinterfacedesc(lua_State *L, const struct libusb_interface_descriptor *desc, int includeendpoints)
 {
-    lua_createtable(L, 0, 9);
+    lua_createtable(L, 0, 9+includeendpoints);
     lua_pushliteral(L, "bLength");
     lua_pushinteger(L, desc->bLength);
     lua_settable(L, -3);
@@ -483,6 +483,62 @@ static int pushinterfacedesc(lua_State *L, struct libusb_interface_descriptor *d
     lua_settable(L, -3);
     lua_pushliteral(L, "iInterface");
     lua_pushinteger(L, desc->iInterface);
+    lua_settable(L, -3);
+    if (includeendpoints)
+    {
+	unsigned int i;
+	lua_pushliteral(L, "endpoint");
+	lua_createtable(L, desc->bNumEndpoints, 0);
+	for (i = 0; i < desc->bNumEndpoints; ++i)
+	{
+	    pushendpointdesc(L, &desc->endpoint[i]);
+	    lua_rawseti(L, -2, i+1);
+	}
+	lua_settable(L, -3);
+    }
+    return 1;
+}
+
+static int pushconfigdesc(lua_State *L, const struct libusb_config_descriptor *desc)
+{
+    unsigned int i,j;
+    lua_createtable(L, 0, 9);
+    lua_pushliteral(L, "bLength");
+    lua_pushinteger(L, desc->bLength);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "bDescriptorType");
+    lua_pushinteger(L, desc->bDescriptorType);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "wTotalLength");
+    lua_pushinteger(L, desc->wTotalLength);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "bNumInterfaces");
+    lua_pushinteger(L, desc->bNumInterfaces);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "bConfigurationValue");
+    lua_pushinteger(L, desc->bConfigurationValue);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "iConfiguration");
+    lua_pushinteger(L, desc->iConfiguration);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "bmAttributes");
+    lua_pushinteger(L, desc->bmAttributes);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "MaxPower");
+    lua_pushinteger(L, desc->MaxPower);
+    lua_settable(L, -3);
+    lua_pushliteral(L, "interface");
+    lua_createtable(L, desc->bNumInterfaces, 0);
+    for (i = 0; i < desc->bNumInterfaces; ++i)
+    {
+	lua_createtable(L, desc->interface[i].num_altsetting, 0);
+	for (j = 0; j < desc->interface[i].num_altsetting; ++j)
+	{
+	    pushinterfacedesc(L, desc->interface[i].altsetting+j, 1);
+	    lua_rawseti(L, -2, j+1);
+	}
+	lua_rawseti(L, -2, i+1);
+    }
     lua_settable(L, -3);
     return 1;
 }
@@ -627,6 +683,47 @@ static int lusb_get_device_descriptor(lua_State *L)
     return 1;
 }
 
+static int lusb_get_active_config_descriptor(lua_State *L)
+{
+    struct libusb_config_descriptor *desc;
+    libusb_device *dev;
+    int err;
+    dev = getdev(L, 1);
+    if ((err = libusb_get_active_config_descriptor(dev, &desc)) != 0)
+	return _err(L, err);
+    pushconfigdesc(L, desc);
+    libusb_free_config_descriptor(desc);
+    return 1;
+}
+
+static int lusb_get_config_descriptor(lua_State *L)
+{
+    struct libusb_config_descriptor *desc;
+    libusb_device *dev;
+    int idx, err;
+    dev = getdev(L, 1);
+    idx = luaL_checkinteger(L, 2);
+    if ((err = libusb_get_config_descriptor(dev, idx, &desc)) != 0)
+	return _err(L, err);
+    pushconfigdesc(L, desc);
+    libusb_free_config_descriptor(desc);
+    return 1;
+}
+
+static int lusb_get_config_descriptor_by_value(lua_State *L)
+{
+    struct libusb_config_descriptor *desc;
+    libusb_device *dev;
+    int val, err;
+    dev = getdev(L, 1);
+    val = luaL_checkinteger(L, 2);
+    if ((err = libusb_get_config_descriptor_by_value(dev, val, &desc)) != 0)
+	return _err(L, err);
+    pushconfigdesc(L, desc);
+    libusb_free_config_descriptor(desc);
+    return 1;
+}
+
 static int lusb_get_descriptor(lua_State *L)
 {
     libusb_device_handle *handle;
@@ -647,7 +744,7 @@ static int lusb_get_descriptor(lua_State *L)
 	pushdevicedesc(L, (struct libusb_device_descriptor*)desc);
 	break;
     case LIBUSB_DT_INTERFACE:
-	pushinterfacedesc(L, (struct libusb_interface_descriptor*)desc);
+	pushinterfacedesc(L, (struct libusb_interface_descriptor*)desc, 0);
 	break;
     case LIBUSB_DT_ENDPOINT:
 	pushendpointdesc(L, (struct libusb_endpoint_descriptor*)desc);
@@ -1543,6 +1640,9 @@ static const luaL_Reg lusb_dev_methods[] = {
     {"get_max_packet_size", lusb_get_max_packet_size},
     {"get_max_iso_packet_size", lusb_get_max_iso_packet_size},
     {"get_device_descriptor", lusb_get_device_descriptor},
+    {"get_active_config_descriptor", lusb_get_active_config_descriptor},
+    {"get_config_descriptor", lusb_get_config_descriptor},
+    {"get_config_descriptor_by_value", lusb_get_config_descriptor_by_value},
     {"open", lusb_open},
     {NULL, NULL}
 };
@@ -1596,6 +1696,9 @@ static const luaL_Reg lusb_functions[] = {
     {"get_max_packet_size", lusb_get_max_packet_size},
     {"get_max_iso_packet_size", lusb_get_max_iso_packet_size},
     {"get_device_descriptor", lusb_get_device_descriptor},
+    {"get_active_config_descriptor", lusb_get_active_config_descriptor},
+    {"get_config_descriptor", lusb_get_config_descriptor},
+    {"get_config_descriptor_by_value", lusb_get_config_descriptor_by_value},
     {"get_descriptor", lusb_get_descriptor},
     {"get_string_descriptor", lusb_get_string_descriptor},
     {"get_string_ascii", lusb_get_string_descriptor_ascii},
