@@ -4,6 +4,8 @@ Functions from libusb are exported in the module namespace. Functions that take 
 
 Constants from libusb are exported in the module namespace with the same name as in the library including the `LIBUSB_` prefix.
 
+If a function fails , it will return `nil`, an error string, and the error number. A Lua error will be raised because of incorrect arguments or if the default context cannot be created.
+
 For more detailed information and usage instructions, please read the [http://libusb.sourceforge.net/api-1.0/ library documentation].
 
 == Context Functions ==
@@ -20,6 +22,12 @@ A default context is created automatically when needed. If you omit the context 
 == Descriptor Functions ==
 
   {{{get_device_descriptor(dev) -> table}}}
+
+  {{{get_active_config_descriptor(dev) -> table}}}
+
+  {{{get_config_descriptor(dev, index) -> table}}}
+
+  {{{get_config_descriptor_by_value(dev, value) -> table}}}
 
   {{{get_descriptor(handle, type, index) -> table or string}}}
 
