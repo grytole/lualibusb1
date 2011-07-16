@@ -832,7 +832,7 @@ static int lusb_get_string_descriptor_utf8(lua_State *L)
     err = libusb_get_string_descriptor(handle, idx, langid, (unsigned char*)&desc, len);
     if (err < 0)
 	return _err(L, err);
-    len = (desc.bLength - 2)/2;
+    len = (err > 0 && desc.bLength > 1) ? (desc.bLength - 2)/2 : 0;
     luaL_buffinit(L, &buffer);
     for (i = 0; i < len; ++i)
     {
