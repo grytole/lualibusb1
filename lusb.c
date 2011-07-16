@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
-#include <stdio.h>
+#include <math.h>
 
 #include <libusb.h>
 
@@ -110,16 +110,18 @@ struct usb_hid_descriptor
 };
 
 
-#define CONTEXT_MT	"libusb_context"
-#define DEVICE_MT	"libusb_device"
-#define HANDLE_MT	"libusb_device_handle"
-#define TRANSFER_MT	"libusb_transfer"
-#define DEFAULT_CTX	"libusb default context"
-#define DEVICES_REG	"libusb devices"
-#define DEVPTR_REG	"libusb devptr"
-#define HANDLES_REG	"libusb handles"
-#define TRANSFER_REG	"libusb active transfers"
-#define BUFFER_REG	"libusb transfer buffers"
+#define CONTEXT_MT	"libusb1_context"
+#define DEVICE_MT	"libusb1_device"
+#define HANDLE_MT	"libusb1_device_handle"
+#define TRANSFER_MT	"libusb1_transfer"
+#define DEFAULT_CTX	"libusb1 default context"
+#define DEVICES_REG	"libusb1 devices"
+#define DEVPTR_REG	"libusb1 devptr"
+#define HANDLES_REG	"libusb1 handles"
+#define TRANSFER_REG	"libusb1 active transfers"
+#define BUFFER_REG	"libusb1 transfer buffers"
+#define POLLIN_REG	"libusb1 pollfds in"
+#define POLLOUT_REG	"libusb1 pollfds out"
 
 /* NULL is a valid context */
 #define INVALID_CONTEXT	((libusb_context*)1)
@@ -1627,10 +1629,235 @@ static int lusb_set_iso_packet_buffer(lua_State *L)
     return 1;
 }
 
+static void pushtimeval(lua_State *L, struct timeval *tv)
+{
+    lua_Number ftime = (lua_Number)tv->tv_usec / 1000000 + tv->tv_sec;
+    lua_pushnumber(L, ftime);
+}
+
+static struct timeval* poptimeval(lua_State *L, int i, struct timeval *tv)
+{
+    lua_Number ipart, fpart;
+    fpart = modf(luaL_optnumber(L, i, 0), &ipart);
+    tv->tv_sec = (long)ipart;
+    tv->tv_usec = (long)floor(fpart * 1000000);
+    return tv;
+}
+
+static int lusb_try_lock_events(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    lua_pushboolean(L, libusb_try_lock_events(ctx) == 0);
+    return 1;
+}
+
+static int lusb_lock_events(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    libusb_lock_events(ctx);
+    return 0;
+}
+
+static int lusb_unlock_events(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    libusb_unlock_events(ctx);
+    return 0;
+}
+
+static int lusb_event_handling_ok(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    lua_pushboolean(L, libusb_event_handling_ok(ctx));
+    return 1;
+}
+
+static int lusb_event_handler_active(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    lua_pushboolean(L, libusb_event_handler_active(ctx));
+    return 1;
+}
+
+static int lusb_lock_event_waiters(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    libusb_lock_event_waiters(ctx);
+    return 0;
+}
+
+static int lusb_unlock_event_waiters(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    libusb_unlock_event_waiters(ctx);
+    return 0;
+}
+
+static int lusb_wait_for_event(lua_State *L)
+{
+    libusb_context *ctx;
+    struct timeval tv;
+    struct timeval *ptv = NULL;
+    lua_settop(L, 2);
+    if (lua_isuserdata(L, 1))
+    {
+    	ctx = getctx(L, 1);
+	if (!lua_isnil(L, 2))
+	    ptv = poptimeval(L, 2, &tv);
+    }
+    else
+    {
+	ctx = defctx(L);
+	if (!lua_isnil(L, 1))
+	    ptv = poptimeval(L, 1, &tv);
+    }
+    lua_pushboolean(L, libusb_wait_for_event(ctx, ptv) == 0);
+    return 1;
+}
+
+static int lusb_handle_events(lua_State *L)
+{
+    libusb_context *ctx;
+    int err;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    if ((err = libusb_handle_events(ctx)) != 0)
+	return _err(L, err);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int lusb_handle_events_timeout(lua_State *L)
+{
+    libusb_context *ctx;
+    struct timeval tv;
+    int err;
+    lua_settop(L, 2);
+    if (lua_isuserdata(L, 1))
+    {
+    	ctx = getctx(L, 1);
+	poptimeval(L, 2, &tv);
+    }
+    else
+    {
+	ctx = defctx(L);
+	poptimeval(L, 1, &tv);
+    }
+    if ((err = libusb_handle_events_timeout(ctx, &tv)) != 0)
+	return _err(L, err);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int lusb_handle_events_locked(lua_State *L)
+{
+    libusb_context *ctx;
+    struct timeval tv;
+    int err;
+    lua_settop(L, 2);
+    if (lua_isuserdata(L, 1))
+    {
+    	ctx = getctx(L, 1);
+	poptimeval(L, 2, &tv);
+    }
+    else
+    {
+	ctx = defctx(L);
+	poptimeval(L, 1, &tv);
+    }
+    if ((err = libusb_handle_events_locked(ctx, &tv)) != 0)
+	return _err(L, err);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int lusb_pollfds_handle_timeouts(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    lua_pushboolean(L, libusb_pollfds_handle_timeouts(ctx));
+    return 1;
+}
+
+static int lusb_get_next_timeout(lua_State *L)
+{
+    libusb_context *ctx;
+    struct timeval tv;
+    int err;
+    lua_settop(L, 1);
+    if (lua_isuserdata(L, 1))
+    	ctx = getctx(L, 1);
+    else
+	ctx = defctx(L);
+    err = libusb_get_next_timeout(ctx, &tv);
+    if (err < 0)
+	return _err(L, err);
+    if (err)
+	pushtimeval(L, &tv);
+    else
+	lua_pushnumber(L, 0);
+    return 1;
+}
+
 
 static const luaL_Reg lusb_ctx_methods[] = {
     {"set_debug", lusb_set_debug},
     {"get_device_list", lusb_get_device_list},
+    {"try_lock_events", lusb_try_lock_events},
+    {"lock_events", lusb_lock_events},
+    {"unlock_events", lusb_unlock_events},
+    {"event_handling_ok", lusb_event_handling_ok},
+    {"event_handler_active", lusb_event_handler_active},
+    {"lock_event_waiters", lusb_lock_event_waiters},
+    {"unlock_event_waiters", lusb_unlock_event_waiters},
+    {"wait_for_event", lusb_wait_for_event},
+    {"handle_events", lusb_handle_events},
+    {"handle_events_timeout", lusb_handle_events_timeout},
+    {"handle_events_locked", lusb_handle_events_locked},
+    {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
+    {"get_next_timeout", lusb_get_next_timeout},
     {NULL, NULL}
 };
 
@@ -1734,6 +1961,18 @@ static const luaL_Reg lusb_functions[] = {
     {"set_iso_packet_lengths", lusb_set_iso_packet_lengths},
     {"get_iso_packet_buffer", lusb_get_iso_packet_buffer},
     {"set_iso_packet_buffer", lusb_set_iso_packet_buffer},
+    {"lock_events", lusb_lock_events},
+    {"unlock_events", lusb_unlock_events},
+    {"event_handling_ok", lusb_event_handling_ok},
+    {"event_handler_active", lusb_event_handler_active},
+    {"lock_event_waiters", lusb_lock_event_waiters},
+    {"unlock_event_waiters", lusb_unlock_event_waiters},
+    {"wait_for_event", lusb_wait_for_event},
+    {"handle_events", lusb_handle_events},
+    {"handle_events_timeout", lusb_handle_events_timeout},
+    {"handle_events_locked", lusb_handle_events_locked},
+    {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
+    {"get_next_timeout", lusb_get_next_timeout},
     {NULL, NULL}
 };
 
@@ -1854,6 +2093,8 @@ int luaopen_libusb1(lua_State *L)
     reg_table(L, HANDLES_REG, "k");
     reg_table(L, BUFFER_REG, "k");
     reg_table(L, TRANSFER_REG, NULL);
+    reg_table(L, POLLIN_REG, "k");
+    reg_table(L, POLLOUT_REG, "k");
     if (luaL_newmetatable(L, CONTEXT_MT))
     {
 	luaL_newlib(L, lusb_ctx_methods);
