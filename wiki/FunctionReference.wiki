@@ -128,3 +128,47 @@ Returns the actual length of the packet that was transfered. The results may not
   {{{set_iso_packet_buffer(transfer, number, string) -> transfer}}}
 
 The first packet is number 0.
+
+== Events and Polling ==
+
+Timeout duration is in seconds and may have a fractional part. The exact resolution depends on the operating system.
+
+  {{{try_lock_events([ctx]) -> boolean}}}
+
+Returns `true` if the lock was obtained successfully.
+
+  {{{lock_events([ctx])}}}
+
+  {{{unlock_events([ctx])}}}
+
+  {{{event_handling_ok([ctx]) -> boolean}}}
+
+  {{{event_handler_active([ctx]) -> boolean}}}
+
+  {{{lock_event_waiters([ctx])}}}
+
+  {{{unlock_event_waiters([ctx])}}}
+
+  {{{wait_for_event([ctx, ] [timeout]) -> boolean}}}
+
+Returns `true` after a transfer completes or another thread stops event handling. A `nil` timeout will wait forever.
+
+  {{{handle_events([ctx]) -> boolean}}}
+
+  {{{handle_events_timeout([ctx, ] [timeout]) -> boolean}}}
+
+The default timeout is 0.
+
+  {{{handle_events_locked([ctx, ] [timeout]) -> boolean}}}
+
+The default timeout is 0.
+
+  {{{pollfds_handle_timeouts([ctx]) -> boolean}}}
+
+Returns `true` if all timeout events are handled internally or `false` if your application must call into libusb at times determined by `libusb_get_next_timeout()`.
+
+  {{{get_next_timeout([ctx]) -> number}}}
+
+  {{{get_pollfds([ctx]) -> in-list, out-list}}}
+
+Returns two tables. The first is a list of reading file descriptors. The second is a list of writing file descriptors. You should wait on the files using a library such as [https://github.com/brimworks/lua-ev lua-ev].
