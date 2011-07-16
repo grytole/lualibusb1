@@ -1188,11 +1188,15 @@ static void lusb_transfer_cb_fn(struct libusb_transfer *tx)
 	    /* no callback */
 	    lua_pop(L, 1);
 	}
+	lua_pop(L, 1);
+	lua_pushnil(L);
+	lua_rawseti(L, -2, ((struct lusb_transfer_cb_ud*)tx->user_data)->ref);
+	lua_pop(L, 1);
     }
-    lua_pop(L, 1);
-    lua_pushnil(L);
-    lua_rawgeti(L, -2, ((struct lusb_transfer_cb_ud*)tx->user_data)->ref);
-    lua_pop(L, 1);
+    else
+    {
+	lua_pop(L, 2);
+    }
 }
 
 static struct lusb_transfer_cb_ud* callback(lua_State *L, int tx, int cb)
