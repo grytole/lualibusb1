@@ -2,6 +2,8 @@
 #include <limits.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+#include <poll.h>
 
 #include <libusb.h>
 
@@ -116,12 +118,11 @@ struct usb_hid_descriptor
 #define TRANSFER_MT	"libusb1_transfer"
 #define DEFAULT_CTX	"libusb1 default context"
 #define DEVICES_REG	"libusb1 devices"
-#define DEVPTR_REG	"libusb1 devptr"
+#define DEVPTR_REG	"libusb1 pointers"
 #define HANDLES_REG	"libusb1 handles"
 #define TRANSFER_REG	"libusb1 active transfers"
 #define BUFFER_REG	"libusb1 transfer buffers"
-#define POLLIN_REG	"libusb1 pollfds in"
-#define POLLOUT_REG	"libusb1 pollfds out"
+#define POLLFD_REG	"libusb1 pollfds"
 
 /* NULL is a valid context */
 #define INVALID_CONTEXT	((libusb_context*)1)
@@ -183,6 +184,18 @@ static libusb_context** newctx(lua_State *L)
     return ctx;
 }
 
+static void ctxptr(lua_State *L, int ctx, libusb_context *ptr)
+{
+    /* Uses the same table for device pointers. */
+    /* Should be safe since they should never overlap. */
+    lua_pushvalue(L, ctx);
+    lua_pushlightuserdata(L, ptr);
+    lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
+    lua_insert(L, -3);
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
 static libusb_context* defctx(lua_State *L)
 {
     libusb_context **ctx;
@@ -216,7 +229,7 @@ static void devptr(lua_State *L, int dev, libusb_device *ptr)
     lua_pushlightuserdata(L, ptr);
     lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
     lua_insert(L, -3);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pop(L, 1);
 }
 
@@ -229,7 +242,7 @@ static libusb_device** newdev(lua_State *L, int object, libusb_device *dev)
     {
 	lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
 	lua_pushlightuserdata(L, dev);
-	lua_gettable(L, -2);
+	lua_rawget(L, -2);
 	if (!lua_isnil(L, -1))
 	{
 	    /* use existing object for this device */
@@ -258,7 +271,7 @@ static libusb_device** newdev(lua_State *L, int object, libusb_device *dev)
 	lua_pop(L, 2);
 	lua_getfield(L, LUA_REGISTRYINDEX, HANDLES_REG);
 	lua_pushvalue(L, object);
-	lua_gettable(L, -2);
+	lua_rawget(L, -2);
     }
     else
     {
@@ -272,7 +285,7 @@ static libusb_device** newdev(lua_State *L, int object, libusb_device *dev)
 	lua_pop(L, 2);
 	lua_getfield(L, LUA_REGISTRYINDEX, DEVICES_REG);
 	lua_insert(L, -3);
-	lua_settable(L, -3);
+	lua_rawset(L, -3);
 	lua_pop(L, 1);
     }
     else
@@ -302,7 +315,7 @@ static libusb_device_handle** newhandle(lua_State *L, int object)
 	lua_pop(L, 2);
 	lua_getfield(L, LUA_REGISTRYINDEX, DEVICES_REG);
 	lua_pushvalue(L, object);
-	lua_gettable(L, -2);
+	lua_rawget(L, -2);
     }
     else
     {
@@ -316,7 +329,7 @@ static libusb_device_handle** newhandle(lua_State *L, int object)
 	lua_pop(L, 2);
 	lua_getfield(L, LUA_REGISTRYINDEX, HANDLES_REG);
 	lua_insert(L, -3);
-	lua_settable(L, -3);
+	lua_rawset(L, -3);
 	lua_pop(L, 1);
     }
     else
@@ -380,46 +393,46 @@ static int pushdevicedesc(lua_State *L, const struct libusb_device_descriptor *d
     lua_createtable(L, 0, 14);
     lua_pushliteral(L, "bLength");
     lua_pushinteger(L, desc->bLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDescriptorType");
     lua_pushinteger(L, desc->bDescriptorType);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bcdUSB");
     lua_pushinteger(L, desc->bcdUSB);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDeviceClass");
     lua_pushinteger(L, desc->bDeviceClass);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDeviceSubClass");
     lua_pushinteger(L, desc->bDeviceSubClass);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDeviceProtocol");
     lua_pushinteger(L, desc->bDeviceProtocol);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bMaxPacketSize0");
     lua_pushinteger(L, desc->bMaxPacketSize0);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "idVendor");
     lua_pushinteger(L, desc->idVendor);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "idProduct");
     lua_pushinteger(L, desc->idProduct);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bcdDevice");
     lua_pushinteger(L, desc->bcdDevice);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "iManufacturer");
     lua_pushinteger(L, desc->iManufacturer);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "iProduct");
     lua_pushinteger(L, desc->iProduct);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "iSerialNumber");
     lua_pushinteger(L, desc->iSerialNumber);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bNumConfigurations");
     lua_pushinteger(L, desc->bNumConfigurations);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     return 1;
 }
 
@@ -428,30 +441,30 @@ static int pushendpointdesc(lua_State *L, const struct libusb_endpoint_descripto
     lua_createtable(L, 0, 8);
     lua_pushliteral(L, "bLength");
     lua_pushinteger(L, desc->bLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDescriptorType");
     lua_pushinteger(L, desc->bDescriptorType);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bEndpointAddress");
     lua_pushinteger(L, desc->bEndpointAddress);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bmAttributes");
     lua_pushinteger(L, desc->bmAttributes);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "wMaxPacketSize");
     lua_pushinteger(L, desc->wMaxPacketSize);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bInterval");
     lua_pushinteger(L, desc->bInterval);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     if (desc->bLength >= LIBUSB_DT_ENDPOINT_AUDIO_SIZE)
     {
 	lua_pushliteral(L, "bRefresh");
 	lua_pushinteger(L, desc->bRefresh);
-	lua_settable(L, -3);
+	lua_rawset(L, -3);
 	lua_pushliteral(L, "bSynchAddress");
 	lua_pushinteger(L, desc->bSynchAddress);
-	lua_settable(L, -3);
+	lua_rawset(L, -3);
     }
     return 1;
 }
@@ -461,31 +474,31 @@ static int pushinterfacedesc(lua_State *L, const struct libusb_interface_descrip
     lua_createtable(L, 0, 9+includeendpoints);
     lua_pushliteral(L, "bLength");
     lua_pushinteger(L, desc->bLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDescriptorType");
     lua_pushinteger(L, desc->bDescriptorType);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bInterfaceNumber");
     lua_pushinteger(L, desc->bInterfaceNumber);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bAlternateSetting");
     lua_pushinteger(L, desc->bAlternateSetting);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bNumEndpoints");
     lua_pushinteger(L, desc->bNumEndpoints);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bInterfaceClass");
     lua_pushinteger(L, desc->bInterfaceClass);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bInterfaceSubClass");
     lua_pushinteger(L, desc->bInterfaceSubClass);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bInterfaceProtocol");
     lua_pushinteger(L, desc->bInterfaceProtocol);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "iInterface");
     lua_pushinteger(L, desc->iInterface);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     if (includeendpoints)
     {
 	unsigned int i;
@@ -496,7 +509,7 @@ static int pushinterfacedesc(lua_State *L, const struct libusb_interface_descrip
 	    pushendpointdesc(L, &desc->endpoint[i]);
 	    lua_rawseti(L, -2, i+1);
 	}
-	lua_settable(L, -3);
+	lua_rawset(L, -3);
     }
     return 1;
 }
@@ -507,28 +520,28 @@ static int pushconfigdesc(lua_State *L, const struct libusb_config_descriptor *d
     lua_createtable(L, 0, 9);
     lua_pushliteral(L, "bLength");
     lua_pushinteger(L, desc->bLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bDescriptorType");
     lua_pushinteger(L, desc->bDescriptorType);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "wTotalLength");
     lua_pushinteger(L, desc->wTotalLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bNumInterfaces");
     lua_pushinteger(L, desc->bNumInterfaces);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bConfigurationValue");
     lua_pushinteger(L, desc->bConfigurationValue);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "iConfiguration");
     lua_pushinteger(L, desc->iConfiguration);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bmAttributes");
     lua_pushinteger(L, desc->bmAttributes);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "MaxPower");
     lua_pushinteger(L, desc->MaxPower);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "interface");
     lua_createtable(L, desc->bNumInterfaces, 0);
     for (i = 0; i < desc->bNumInterfaces; ++i)
@@ -541,7 +554,7 @@ static int pushconfigdesc(lua_State *L, const struct libusb_config_descriptor *d
 	}
 	lua_rawseti(L, -2, i+1);
     }
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     return 1;
 }
 
@@ -614,8 +627,7 @@ static int lusb_get_device_list(lua_State *L)
     libusb_context *ctx;
     libusb_device **devlist;
     ssize_t numdevices, n;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     {
     	ctx = getctx(L, 1);
     }
@@ -1170,6 +1182,10 @@ struct lusb_transfer_cb_ud
 static void lusb_transfer_cb_fn(struct libusb_transfer *tx)
 {
     lua_State *L = ((struct lusb_transfer_cb_ud*)tx->user_data)->L;
+    int base;
+    if (!lua_checkstack(L, 6))
+	return;
+    base = lua_gettop(L);
     lua_getfield(L, LUA_REGISTRYINDEX, TRANSFER_REG);
     lua_rawgeti(L, -1, ((struct lusb_transfer_cb_ud*)tx->user_data)->ref);
     if (!lua_isnil(L, -1))
@@ -1191,12 +1207,8 @@ static void lusb_transfer_cb_fn(struct libusb_transfer *tx)
 	lua_pop(L, 1);
 	lua_pushnil(L);
 	lua_rawseti(L, -2, ((struct lusb_transfer_cb_ud*)tx->user_data)->ref);
-	lua_pop(L, 1);
     }
-    else
-    {
-	lua_pop(L, 2);
-    }
+    lua_settop(L, base);
 }
 
 static struct lusb_transfer_cb_ud* callback(lua_State *L, int tx, int cb)
@@ -1210,7 +1222,7 @@ static struct lusb_transfer_cb_ud* callback(lua_State *L, int tx, int cb)
     lua_rawseti(L, -4, 1);
     lua_rawseti(L, -3, 2);
     lua_rawseti(L, -2, 3);
-    ud->ref = lua_rawlen(L, -2) + 1;
+    ud->ref = (int)lua_rawlen(L, -2) + 1;
     ud->L = L;
     lua_rawseti(L, -2, ud->ref);
     lua_pop(L, 1);
@@ -1295,19 +1307,19 @@ static int lusb_control_transfer_get_setup(lua_State *L)
     lua_createtable(L, 5, 0);
     lua_pushliteral(L, "bmRequestType");
     lua_pushinteger(L, setup->bmRequestType);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "bRequest");
     lua_pushinteger(L, setup->bRequest);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "wValue");
     lua_pushinteger(L, setup->wValue);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "wIndex");
     lua_pushinteger(L, setup->wIndex);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     lua_pushliteral(L, "wLength");
     lua_pushinteger(L, setup->wLength);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     return 1;
 }
 
@@ -1320,7 +1332,7 @@ static unsigned char* transferbuffer(lua_State *L, int transferidx, int len)
     lua_getfield(L, LUA_REGISTRYINDEX, BUFFER_REG);
     lua_pushvalue(L, transferidx);
     lua_pushvalue(L, -2);
-    lua_settable(L, -3);
+    lua_rawset(L, -3);
     tx->buffer = buf;
     tx->length = len;
     tx->actual_length = 0;
@@ -1353,7 +1365,8 @@ static unsigned char* controlsetuptable(lua_State *L, int obj,
     lua_pop(L, 1);
     if (len)
     {
-	lua_rawgeti(L, obj, 1);
+	lua_pushinteger(L, 1);
+	lua_gettable(L, obj);
 	if (lua_isstring(L, -1))
 	{
 	    const char *str = lua_tolstring(L, -1, len);
@@ -1651,8 +1664,7 @@ static struct timeval* poptimeval(lua_State *L, int i, struct timeval *tv)
 static int lusb_try_lock_events(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1663,8 +1675,7 @@ static int lusb_try_lock_events(lua_State *L)
 static int lusb_lock_events(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1675,8 +1686,7 @@ static int lusb_lock_events(lua_State *L)
 static int lusb_unlock_events(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1687,8 +1697,7 @@ static int lusb_unlock_events(lua_State *L)
 static int lusb_event_handling_ok(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1699,8 +1708,7 @@ static int lusb_event_handling_ok(lua_State *L)
 static int lusb_event_handler_active(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1711,8 +1719,7 @@ static int lusb_event_handler_active(lua_State *L)
 static int lusb_lock_event_waiters(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1723,8 +1730,7 @@ static int lusb_lock_event_waiters(lua_State *L)
 static int lusb_unlock_event_waiters(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1738,17 +1744,19 @@ static int lusb_wait_for_event(lua_State *L)
     struct timeval tv;
     struct timeval *ptv = NULL;
     lua_settop(L, 2);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnil(L, 2))
     {
     	ctx = getctx(L, 1);
-	if (!lua_isnil(L, 2))
-	    ptv = poptimeval(L, 2, &tv);
+	ptv = poptimeval(L, 2, &tv);
+    }
+    else if (lua_isnumber(L, 1))
+    {
+	ctx = defctx(L);
+	ptv = poptimeval(L, 1, &tv);
     }
     else
     {
-	ctx = defctx(L);
-	if (!lua_isnil(L, 1))
-	    ptv = poptimeval(L, 1, &tv);
+	ctx = getctx(L, 1);
     }
     lua_pushboolean(L, libusb_wait_for_event(ctx, ptv) == 0);
     return 1;
@@ -1758,8 +1766,7 @@ static int lusb_handle_events(lua_State *L)
 {
     libusb_context *ctx;
     int err;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1775,15 +1782,20 @@ static int lusb_handle_events_timeout(lua_State *L)
     struct timeval tv;
     int err;
     lua_settop(L, 2);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnil(L, 2))
     {
     	ctx = getctx(L, 1);
 	poptimeval(L, 2, &tv);
     }
-    else
+    else if (lua_isnumber(L, 1))
     {
 	ctx = defctx(L);
 	poptimeval(L, 1, &tv);
+    }
+    else
+    {
+	ctx = getctx(L, 1);
+	tv.tv_sec = tv.tv_usec = 0;
     }
     if ((err = libusb_handle_events_timeout(ctx, &tv)) != 0)
 	return _err(L, err);
@@ -1797,15 +1809,20 @@ static int lusb_handle_events_locked(lua_State *L)
     struct timeval tv;
     int err;
     lua_settop(L, 2);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnil(L, 2))
     {
     	ctx = getctx(L, 1);
 	poptimeval(L, 2, &tv);
     }
-    else
+    else if (lua_isnumber(L, 1))
     {
 	ctx = defctx(L);
 	poptimeval(L, 1, &tv);
+    }
+    else
+    {
+	ctx = getctx(L, 1);
+	tv.tv_sec = tv.tv_usec = 0;
     }
     if ((err = libusb_handle_events_locked(ctx, &tv)) != 0)
 	return _err(L, err);
@@ -1816,8 +1833,7 @@ static int lusb_handle_events_locked(lua_State *L)
 static int lusb_pollfds_handle_timeouts(lua_State *L)
 {
     libusb_context *ctx;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1830,8 +1846,7 @@ static int lusb_get_next_timeout(lua_State *L)
     libusb_context *ctx;
     struct timeval tv;
     int err;
-    lua_settop(L, 1);
-    if (lua_isuserdata(L, 1))
+    if (!lua_isnoneornil(L, 1))
     	ctx = getctx(L, 1);
     else
 	ctx = defctx(L);
@@ -1843,6 +1858,201 @@ static int lusb_get_next_timeout(lua_State *L)
     else
 	lua_pushnumber(L, 0);
     return 1;
+}
+
+struct lusb_pollfd_cb_ud
+{
+    lua_State *L;
+    libusb_context *ctx;
+};
+
+static void lusb_pollfd_add_cb_fn(int fd, short events, void *ud)
+{
+    lua_State *L = ((struct lusb_pollfd_cb_ud*)ud)->L;
+    size_t n;
+    int base;
+    if (!lua_checkstack(L, 8))
+	return;
+    base = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
+    lua_pushlightuserdata(L, ((struct lusb_pollfd_cb_ud*)ud)->ctx);
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1))
+    {
+	lua_getfield(L, LUA_REGISTRYINDEX, POLLFD_REG);
+	lua_pushvalue(L, -2);
+	lua_rawget(L, -2);
+	if (!lua_isnil(L, -1))
+	{
+	    /* will libusb never give a duplicate fd? */
+	    if (events & POLLIN)
+	    {
+		lua_rawgeti(L, -1, 1);
+		n = lua_rawlen(L, -1);
+		lua_pushinteger(L, fd);
+		lua_rawseti(L, -2, n+1);
+		lua_pop(L, 1);
+	    }
+	    if (events & POLLOUT)
+	    {
+		lua_rawgeti(L, -1, 2);
+		n = lua_rawlen(L, -1);
+		lua_pushinteger(L, fd);
+		lua_rawseti(L, -2, n+1);
+		lua_pop(L, 1);
+	    }
+	    lua_rawgeti(L, -1, 4);
+	    if (!lua_isnil(L, -1))
+	    {
+		lua_pushinteger(L, fd);
+		lua_pushinteger(L, events);
+		lua_pushvalue(L, base+2);
+		lua_pcall(L, 3, 0, 0);
+	    }
+	}
+    }
+    lua_settop(L, base);
+}
+
+static void lusb_pollfd_rem_cb_fn(int fd, void *ud)
+{
+    lua_State *L = ((struct lusb_pollfd_cb_ud*)ud)->L;
+    size_t n;
+    int base;
+    if (!lua_checkstack(L, 8))
+	return;
+    base = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
+    lua_pushlightuserdata(L, ((struct lusb_pollfd_cb_ud*)ud)->ctx);
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1))
+    {
+	lua_getfield(L, LUA_REGISTRYINDEX, POLLFD_REG);
+	lua_pushvalue(L, -2);
+	lua_rawget(L, -2);
+	if (!lua_isnil(L, -1))
+	{
+	    lua_rawgeti(L, -1, 1);
+	    for (n = lua_rawlen(L, -1); n > 0; --n)
+	    {
+		lua_rawgeti(L, -1, n);
+		if (lua_tointeger(L, -1) == fd)
+		{
+		    lua_pushnil(L);
+		    lua_rawseti(L, -3, n);
+		}
+		lua_pop(L, 1);
+	    }
+	    lua_pop(L, 1);
+	    lua_rawgeti(L, -1, 2);
+	    for (n = lua_rawlen(L, -1); n > 0; --n)
+	    {
+		lua_rawgeti(L, -1, n);
+		if (lua_tointeger(L, -1) == fd)
+		{
+		    lua_pushnil(L);
+		    lua_rawseti(L, -3, n);
+		}
+		lua_pop(L, 1);
+	    }
+	    lua_pop(L, 1);
+	    lua_rawgeti(L, -1, 5);
+	    if (!lua_isnil(L, -1))
+	    {
+		lua_pushinteger(L, fd);
+		lua_pushvalue(L, base+2);
+		lua_pcall(L, 3, 0, 0);
+	    }
+	}
+    }
+    lua_settop(L, base);
+}
+
+static void pollfds(lua_State *L, int context)
+{
+    libusb_context *ctx;
+    const struct libusb_pollfd **fds;
+    size_t i, inlen, outlen;
+    struct lusb_pollfd_cb_ud *ud;
+    int base = lua_gettop(L);
+    if (context < 0)
+	context = base + context + 1;
+    lua_getfield(L, LUA_REGISTRYINDEX, POLLFD_REG);
+    lua_pushvalue(L, context);
+    lua_rawget(L, base+1);
+    if (lua_isnil(L, -1))
+    {
+	lua_pop(L, 1);
+	ctx = *(libusb_context**)lua_touserdata(L, context);
+	ctxptr(L, context, ctx);
+	lua_createtable(L, 5, 0);
+	ud = (struct lusb_pollfd_cb_ud*)lua_newuserdata(L, sizeof(struct lusb_pollfd_cb_ud));
+	ud->L = L;
+	ud->ctx = ctx;
+	lua_rawseti(L, base+2, 3);
+	lua_createtable(L, 0, 0);       /* inlist +3 */
+	lua_createtable(L, 0, 0);       /* outlist +4 */
+	fds = libusb_get_pollfds(ctx);
+	if (fds)
+	{
+	    inlen = outlen = 0;
+	    for (i = 0; fds[i] != NULL; ++i)
+	    {
+		if (fds[i]->events & POLLIN)
+		{
+		    lua_pushinteger(L, fds[i]->fd);
+		    lua_rawseti(L, base+3, (int)++inlen);
+		}
+		if (fds[i]->events & POLLOUT)
+		{
+		    lua_pushinteger(L, fds[i]->fd);
+		    lua_rawseti(L, base+4, (int)++outlen);
+		}
+	    }
+	    free(fds);
+	}
+	lua_rawseti(L, base+2, 2);
+	lua_rawseti(L, base+2, 1);
+	lua_pushvalue(L, context);
+	lua_pushvalue(L, base+2);
+	lua_rawset(L, base+1);
+	libusb_set_pollfd_notifiers(ctx, lusb_pollfd_add_cb_fn,
+					 lusb_pollfd_rem_cb_fn, ud);
+    }
+    lua_rawgeti(L, base+2, 1);
+    lua_rawgeti(L, base+2, 2);
+    lua_replace(L, base+2);
+    lua_replace(L, base+1);
+}
+
+static int lusb_get_pollfds(lua_State *L)
+{
+    libusb_context *ctx;
+    size_t i, len;
+    lua_settop(L, 1);
+    if (!lua_isnil(L, 1))
+    	ctx = getctx(L, 1);
+    else
+    {
+	lua_pop(L, 1);
+	ctx = defctx(L);
+    }
+    pollfds(L, 1);
+    len = lua_rawlen(L, 2);
+    lua_createtable(L, len, 0);
+    for (i = 1; i <= len; ++i)
+    {
+	lua_rawgeti(L, 2, (int)i);
+	lua_rawseti(L, -2, (int)i);
+    }
+    len = lua_rawlen(L, 3);
+    lua_createtable(L, len, 0);
+    for (i = 1; i <= len; ++i)
+    {
+	lua_rawgeti(L, 3, (int)i);
+	lua_rawseti(L, -2, (int)i);
+    }
+    return 2;
 }
 
 
@@ -1862,6 +2072,7 @@ static const luaL_Reg lusb_ctx_methods[] = {
     {"handle_events_locked", lusb_handle_events_locked},
     {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
     {"get_next_timeout", lusb_get_next_timeout},
+    {"get_poll_fds", lusb_get_pollfds},
     {NULL, NULL}
 };
 
@@ -1977,6 +2188,7 @@ static const luaL_Reg lusb_functions[] = {
     {"handle_events_locked", lusb_handle_events_locked},
     {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
     {"get_next_timeout", lusb_get_next_timeout},
+    {"get_poll_fds", lusb_get_pollfds},
     {NULL, NULL}
 };
 
@@ -2097,8 +2309,7 @@ int luaopen_libusb1(lua_State *L)
     reg_table(L, HANDLES_REG, "k");
     reg_table(L, BUFFER_REG, "k");
     reg_table(L, TRANSFER_REG, NULL);
-    reg_table(L, POLLIN_REG, "k");
-    reg_table(L, POLLOUT_REG, "k");
+    reg_table(L, POLLFD_REG, "k");
     if (luaL_newmetatable(L, CONTEXT_MT))
     {
 	luaL_newlib(L, lusb_ctx_methods);
