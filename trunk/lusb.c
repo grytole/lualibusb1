@@ -20,6 +20,12 @@ typedef unsigned int	lua_Unsigned;
 #define luaL_setfuncs(L,l,n)	luaI_openlib(L,NULL,(l),(n))
 #define luaL_newlibtable(L,l)	lua_createtable(L,0,sizeof(l)/sizeof((l)[0])-1)
 #define luaL_newlib(L,l)	(luaL_newlibtable(L,l),luaL_setfuncs(L,l,0))
+static int lua_absindex(lua_State *L, int index)
+{
+    return (LUA_REGISTRYINDEX <= index && index < 0)
+	   ? lua_gettop(L) + index + 1
+	   : index;
+}
 #endif
 
 static lua_Unsigned l_checkunsigned(lua_State *L, int narg, int nval)
@@ -236,8 +242,7 @@ static void devptr(lua_State *L, int dev, libusb_device *ptr)
 static libusb_device** newdev(lua_State *L, int object, libusb_device *dev)
 {
     libusb_device **udev;
-    if (object < 0)
-	object = lua_gettop(L) + object + 1;
+    object = lua_absindex(L, object);
     if (dev != INVALID_DEVICE)
     {
 	lua_getfield(L, LUA_REGISTRYINDEX, DEVPTR_REG);
@@ -299,8 +304,7 @@ static libusb_device** newdev(lua_State *L, int object, libusb_device *dev)
 static libusb_device_handle** newhandle(lua_State *L, int object)
 {
     libusb_device_handle **handle;
-    if (object < 0)
-	object = lua_gettop(L) + object + 1;
+    object = lua_absindex(L, object);
     handle = (libusb_device_handle**)lua_newuserdata(L, sizeof(libusb_device_handle*));
     *handle = INVALID_HANDLE;
     luaL_getmetatable(L, HANDLE_MT);
@@ -1281,7 +1285,7 @@ static int lusb_transfer_get_data(lua_State *L)
 static int lusb_control_transfer_get_data(lua_State *L)
 {
     struct libusb_transfer *tx;
-    struct libusb_control_setup *setup;
+    /*struct libusb_control_setup *setup;*/
     tx = gettransfer(L, 1);
     if (tx->buffer == NULL)
     {
@@ -1323,6 +1327,15 @@ static int lusb_control_transfer_get_setup(lua_State *L)
     return 1;
 }
 
+static void txhandle(lua_State *L, int transferidx, int handleidx)
+{
+    lua_getfield(L, LUA_REGISTRYINDEX, HANDLES_REG);
+    lua_pushvalue(L, transferidx);
+    lua_pushvalue(L, handleidx);
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
 static unsigned char* transferbuffer(lua_State *L, int transferidx, int len)
 {
     unsigned char *buf;
@@ -1331,7 +1344,7 @@ static unsigned char* transferbuffer(lua_State *L, int transferidx, int len)
     buf = (unsigned char*)lua_newuserdata(L, len);
     lua_getfield(L, LUA_REGISTRYINDEX, BUFFER_REG);
     lua_pushvalue(L, transferidx);
-    lua_pushvalue(L, -2);
+    lua_pushvalue(L, -3);
     lua_rawset(L, -3);
     tx->buffer = buf;
     tx->length = len;
@@ -1468,6 +1481,7 @@ static int lusb_fill_control_transfer(lua_State *L)
     handle = gethandle(L, 2);
     if (lua_gettop(L) > 2)
 	fillcontrolsetup(L, 1, 3);
+    txhandle(L, 1, 2);
     libusb_fill_control_transfer(tx, handle, tx->buffer, NULL, NULL, 0);
     lua_settop(L, 1);
     return 1;
@@ -1495,6 +1509,7 @@ static int lusb_fill_bulk_transfer(lua_State *L)
 	buf = transferbuffer(L, 1, len>0?len:1);
 	memcpy(buf, data, len);
     }
+    txhandle(L, 1, 2);
     libusb_fill_bulk_transfer(tx, handle, endp, buf, len, NULL, NULL, 0);
     lua_settop(L, 1);
     return 1;
@@ -1522,6 +1537,7 @@ static int lusb_fill_interrupt_transfer(lua_State *L)
 	buf = transferbuffer(L, 1, len>0?len:1);
 	memcpy(buf, data, len);
     }
+    txhandle(L, 1, 2);
     libusb_fill_interrupt_transfer(tx, handle, endp, buf, len, NULL, NULL, 0);
     lua_settop(L, 1);
     return 1;
@@ -1550,6 +1566,7 @@ static int lusb_fill_iso_transfer(lua_State *L)
 	buf = transferbuffer(L, 1, len>0?len:1);
 	memcpy(buf, data, len);
     }
+    txhandle(L, 1, 2);
     libusb_fill_iso_transfer(tx, handle, endp, buf, len, num, NULL, NULL, 0);
     lua_settop(L, 1);
     return 1;
@@ -1975,8 +1992,7 @@ static void pollfds(lua_State *L, int context)
     size_t i, inlen, outlen;
     struct lusb_pollfd_cb_ud *ud;
     int base = lua_gettop(L);
-    if (context < 0)
-	context = base + context + 1;
+    context = lua_absindex(L, context);
     lua_getfield(L, LUA_REGISTRYINDEX, POLLFD_REG);
     lua_pushvalue(L, context);
     lua_rawget(L, base+1);
