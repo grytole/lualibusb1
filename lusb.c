@@ -2001,6 +2001,7 @@ static void pollfds(lua_State *L, int context)
 	lua_pop(L, 1);
 	ctx = *(libusb_context**)lua_touserdata(L, context);
 	ctxptr(L, context, ctx);
+	/* pollfds[ctx] = { inlist, outlist, userdata, addcb, remcb } */
 	lua_createtable(L, 5, 0);
 	ud = (struct lusb_pollfd_cb_ud*)lua_newuserdata(L, sizeof(struct lusb_pollfd_cb_ud));
 	ud->L = L;
@@ -2035,10 +2036,8 @@ static void pollfds(lua_State *L, int context)
 	libusb_set_pollfd_notifiers(ctx, lusb_pollfd_add_cb_fn,
 					 lusb_pollfd_rem_cb_fn, ud);
     }
-    lua_rawgeti(L, base+2, 1);
-    lua_rawgeti(L, base+2, 2);
-    lua_replace(L, base+2);
-    lua_replace(L, base+1);
+    lua_settop(L, base+2);
+    lua_remove(L, base+1);
 }
 
 static int lusb_get_pollfds(lua_State *L)
@@ -2054,6 +2053,9 @@ static int lusb_get_pollfds(lua_State *L)
 	ctx = defctx(L);
     }
     pollfds(L, 1);
+    lua_rawgeti(L, -1, 1);
+    lua_rawgeti(L, -1, 2);
+    lua_remove(L, 2);
     len = lua_rawlen(L, 2);
     lua_createtable(L, len, 0);
     for (i = 1; i <= len; ++i)
@@ -2069,6 +2071,25 @@ static int lusb_get_pollfds(lua_State *L)
 	lua_rawseti(L, -2, (int)i);
     }
     return 2;
+}
+
+static int lusb_set_pollfd_notifiers(lua_State *L)
+{
+    libusb_context *ctx;
+    lua_settop(L, 3);
+    if (!lua_isnil(L, 1))
+    	ctx = getctx(L, 1);
+    else
+    {
+	ctx = defctx(L);
+	lua_replace(L, 1);
+    }
+    pollfds(L, 1);
+    lua_pushvalue(L, 2);
+    lua_rawseti(L, -2, 4);
+    lua_pushvalue(L, 3);
+    lua_rawseti(L, -2, 5);
+    return 0;
 }
 
 
@@ -2088,7 +2109,8 @@ static const luaL_Reg lusb_ctx_methods[] = {
     {"handle_events_locked", lusb_handle_events_locked},
     {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
     {"get_next_timeout", lusb_get_next_timeout},
-    {"get_poll_fds", lusb_get_pollfds},
+    {"get_pollfds", lusb_get_pollfds},
+    {"set_pollfd_notifiers", lusb_set_pollfd_notifiers},
     {NULL, NULL}
 };
 
@@ -2204,7 +2226,8 @@ static const luaL_Reg lusb_functions[] = {
     {"handle_events_locked", lusb_handle_events_locked},
     {"pollfds_handle_timeouts", lusb_pollfds_handle_timeouts},
     {"get_next_timeout", lusb_get_next_timeout},
-    {"get_poll_fds", lusb_get_pollfds},
+    {"get_pollfds", lusb_get_pollfds},
+    {"set_pollfd_notifiers", lusb_set_pollfd_notifiers},
     {NULL, NULL}
 };
 
