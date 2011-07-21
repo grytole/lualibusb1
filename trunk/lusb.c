@@ -2340,6 +2340,24 @@ static void reg_table(lua_State *L, const char *name, const char *mode)
     lua_pop(L, 1);
 }
 
+#define reg_methods(L,n,f,c)	reg_methods_n(L,n,f,sizeof(f)/sizeof((f)[0])-1,c)
+static void reg_methods_n(lua_State *L, const char *name,
+			  const luaL_Reg *funcs, size_t nfuncs,
+			  lua_CFunction gc)
+{
+    if (luaL_newmetatable(L, name))
+    {
+	lua_createtable(L, 0, nfuncs);
+	luaL_setfuncs(L, funcs, 0);
+	lua_setfield(L, -2, "__index");
+	lua_pushcfunction(L, gc);
+	lua_setfield(L, -2, "__gc");
+	lua_pushboolean(L, 0);
+	lua_setfield(L, -2, "__metatable");
+    }
+    lua_pop(L, 1);
+}
+
 int luaopen_libusb1(lua_State *L)
 {
     int i;
@@ -2349,35 +2367,10 @@ int luaopen_libusb1(lua_State *L)
     reg_table(L, BUFFER_REG, "k");
     reg_table(L, TRANSFER_REG, NULL);
     reg_table(L, POLLFD_REG, "k");
-    if (luaL_newmetatable(L, CONTEXT_MT))
-    {
-	luaL_newlib(L, lusb_ctx_methods);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, exitctx);
-	lua_setfield(L, -2, "__gc");
-    }
-    if (luaL_newmetatable(L, DEVICE_MT))
-    {
-	luaL_newlib(L, lusb_dev_methods);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, unrefdev);
-	lua_setfield(L, -2, "__gc");
-    }
-    if (luaL_newmetatable(L, HANDLE_MT))
-    {
-	luaL_newlib(L, lusb_handle_methods);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, closehandle);
-	lua_setfield(L, -2, "__gc");
-    }
-    if (luaL_newmetatable(L, TRANSFER_MT))
-    {
-	luaL_newlib(L, lusb_transfer_methods);
-	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, freetransfer);
-	lua_setfield(L, -2, "__gc");
-    }
-    lua_pop(L, 3);
+    reg_methods(L, CONTEXT_MT, lusb_ctx_methods, exitctx);
+    reg_methods(L, DEVICE_MT, lusb_dev_methods, unrefdev);
+    reg_methods(L, HANDLE_MT, lusb_handle_methods, closehandle);
+    reg_methods(L, TRANSFER_MT, lusb_transfer_methods, freetransfer);
     lua_createtable(L, 0, (sizeof(lusb_functions)/sizeof(luaL_Reg))+
 	    		   (sizeof(lusb_constants)/sizeof(l_constant))-2);
     luaL_setfuncs(L, lusb_functions, 0);
