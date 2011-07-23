@@ -1,10 +1,12 @@
 package = "lualibusb1"
-version = "1.0-1"
-source = { url = "" }
+version = "$$(VERSION)-1"
+source = {
+  url = "http://lualibusb1.googlecode.com/files/lualibusb1-$$(VERSION).tar.gz"
+}
 description = {
-  summary = "libusb-1.0 binding.",
-  homepage = "",
-  license = "MIT"
+  summary = "libusb-1.0 binding",
+  homepage = "http://lualibusb1.googlecode.com/",
+  license = "MIT/X11"
 }
 dependencies = {
   "lua >= 5.1"
