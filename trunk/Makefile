@@ -1,4 +1,4 @@
-VERSION= 1.0.0
+VERSION= 1.0.1
 
 BASEDIR= /home/tnharris
 INSTALL_LIB= $(BASEDIR)/lib/lua/5.2
@@ -35,7 +35,9 @@ tar: dist/lualibusb1-$(VERSION).tar.gz
 
 dist/lualibusb1-$(VERSION).tar.gz: libusb1.so rockspecs/lualibusb1-$(VERSION)-1.rockspec
 	mkdir -p dist/lualibusb1-$(VERSION)
-	cp -r README COPYRIGHT Makefile lusb.c rockspecs dist/lualibusb1-$(VERSION)
+	mkdir -p dist/lualibusb1-$(VERSION)/rockspecs
+	cp README COPYRIGHT Makefile lusb.c dist/lualibusb1-$(VERSION)
+	cp rockspecs/*.rockspec dist/lualibusb1-$(VERSION)/rockspecs
 	tar -cz -C dist -f $@ lualibusb1-$(VERSION)
 	rm -r dist/lualibusb1-$(VERSION)
 
