@@ -1125,7 +1125,7 @@ static int lusb_bulk_transfer(lua_State *L)
     }
     else /* LIBUSB_ENDPOINT_OUT */
     {
-	data = (unsigned char*)luaL_checklstring(L, 6, &len);
+	data = (unsigned char*)luaL_checklstring(L, 3, &len);
 	err = libusb_bulk_transfer(handle, endp, data, len,
 				   (int*)&len, timeout);
 	if (err < 0 && err != LIBUSB_ERROR_TIMEOUT)
@@ -1165,7 +1165,7 @@ static int lusb_interrupt_transfer(lua_State *L)
     }
     else /* LIBUSB_ENDPOINT_OUT */
     {
-	data = (unsigned char*)luaL_checklstring(L, 6, &len);
+	data = (unsigned char*)luaL_checklstring(L, 3, &len);
 	err = libusb_interrupt_transfer(handle, endp, data, len,
 					(int*)&len, timeout);
 	if (err < 0 && err != LIBUSB_ERROR_TIMEOUT)
