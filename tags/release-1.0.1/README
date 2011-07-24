@@ -1,0 +1,6 @@
+lualibusb1 - Lua binding for libusb 1.0
+Copyright (C) 2011 Tom N Harris
+http://lualibusb1.googlecode.com/
+
+Get libusb from http://www.libusb.org/
+
