@@ -4,3 +4,6 @@ http://lualibusb1.googlecode.com/
 
 Get libusb from http://www.libusb.org/
 
+--
+Function reference:
+  https://github.com/grytole/lualibusb1/blob/wiki/FunctionReference.md
